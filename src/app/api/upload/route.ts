@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Network, Ed25519Account, Ed25519PrivateKey } from "@aptos-labs/ts-sdk";
 import { ShelbyNodeClient } from "@shelby-protocol/sdk/node";
-import fs from "fs/promises";
-import path from "path";
+import { readVideos, writeVideos } from "@/data/db";
 
 // Helper to sanitize filenames to prevent URL encoding issues
 const sanitizeFilename = (filename: string) => {
@@ -111,17 +110,8 @@ export async function POST(request: NextRequest) {
 
     console.log(`Uploaded successfully! URL: ${videoUrl}`);
 
-    // 6. Write metadata to local videos.json store
-    const dbPath = path.join(process.cwd(), "src/data/videos.json");
-    let videos: any[] = [];
-    
-    try {
-      const dbContent = await fs.readFile(dbPath, "utf-8");
-      videos = JSON.parse(dbContent);
-    } catch (err) {
-      // In case directory or file is missing (failsafe, though created earlier)
-      await fs.mkdir(path.dirname(dbPath), { recursive: true });
-    }
+    // 6. Write metadata to videos.json store
+    const videos = await readVideos();
 
     const newVideo = {
       id: Date.now().toString(),
@@ -141,7 +131,7 @@ export async function POST(request: NextRequest) {
     };
 
     videos.push(newVideo);
-    await fs.writeFile(dbPath, JSON.stringify(videos, null, 2), "utf-8");
+    await writeVideos(videos);
 
     return NextResponse.json({
       success: true,

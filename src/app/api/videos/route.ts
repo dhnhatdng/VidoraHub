@@ -1,19 +1,9 @@
 import { NextResponse } from "next/server";
-import fs from "fs/promises";
-import path from "path";
+import { readVideos } from "@/data/db";
 
 export async function GET() {
   try {
-    const dbPath = path.join(process.cwd(), "src/data/videos.json");
-    let videos = [];
-    
-    try {
-      const dbContent = await fs.readFile(dbPath, "utf-8");
-      videos = JSON.parse(dbContent);
-    } catch (err) {
-      // If database file doesn't exist, start with empty list
-      return NextResponse.json([]);
-    }
+    const videos = await readVideos();
 
     // Sort videos to return the newest uploads first
     videos.sort((a: any, b: any) => b.timestamp - a.timestamp);

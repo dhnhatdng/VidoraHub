@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs/promises";
-import path from "path";
+import { readVideos, writeVideos } from "@/data/db";
 
 export async function POST(
   request: NextRequest,
@@ -15,15 +14,7 @@ export async function POST(
       return NextResponse.json({ error: "Missing action parameter" }, { status: 400 });
     }
 
-    const dbPath = path.join(process.cwd(), "src/data/videos.json");
-    let videos: any[] = [];
-
-    try {
-      const dbContent = await fs.readFile(dbPath, "utf-8");
-      videos = JSON.parse(dbContent);
-    } catch (err) {
-      return NextResponse.json({ error: "Video database not found" }, { status: 404 });
-    }
+    const videos = await readVideos();
 
     const videoIndex = videos.findIndex((v) => v.id === id);
     if (videoIndex === -1) {
@@ -59,7 +50,7 @@ export async function POST(
 
     // Save back to database
     videos[videoIndex] = video;
-    await fs.writeFile(dbPath, JSON.stringify(videos, null, 2), "utf-8");
+    await writeVideos(videos);
 
     return NextResponse.json({
       success: true,
