@@ -2,8 +2,13 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 
-// Detect if running on Vercel
-const isVercel = process.env.VERCEL === "1" || process.env.VERCEL === "true" || process.env.NOW_BUILDER !== undefined;
+// Detect if running on Vercel (or AWS Lambda serverless task runner)
+const isVercel = 
+  process.env.VERCEL === "1" || 
+  process.env.VERCEL === "true" || 
+  process.env.NOW_BUILDER !== undefined ||
+  process.env.LAMBDA_TASK_ROOT !== undefined ||
+  (typeof process.cwd === "function" && process.cwd().startsWith("/var/task"));
 
 export const getDbPath = async (): Promise<string> => {
   const localPath = path.join(process.cwd(), "src/data/videos.json");
