@@ -25,9 +25,17 @@
     "fileSize": 211443,
     "category": "Entertainment",
     "type": "image",
-    "views": 1,
+    "views": 3,
     "likes": 0,
-    "dislikes": 0,
-    "totalTips": 0
+    "dislikes": 1,
+    "totalTips": 0,
+    "comments": [
+      {
+        "id": "1781589638982",
+        "author": "0xe0de8d2bab3da2a3dc284ada8a062f222ed50a2071f9119b3e0ad20573e2df2b",
+        "text": "Good",
+        "timestamp": 1781589638982
+      }
+    ]
   }
 ]

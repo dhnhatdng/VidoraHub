@@ -8,7 +8,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { action, amount } = body;
+    const { action, amount, author, text } = body;
 
     if (!action) {
       return NextResponse.json({ error: "Missing action parameter" }, { status: 400 });
@@ -29,6 +29,7 @@ export async function POST(
     if (video.dislikes === undefined) video.dislikes = 0;
     if (video.totalTips === undefined) video.totalTips = 0;
     if (video.category === undefined) video.category = "Others";
+    if (video.comments === undefined) video.comments = [];
 
     // Perform action
     if (action === "view") {
@@ -37,6 +38,21 @@ export async function POST(
       video.likes += 1;
     } else if (action === "unlike") {
       video.likes = Math.max(0, video.likes - 1);
+    } else if (action === "dislike") {
+      video.dislikes += 1;
+    } else if (action === "undislike") {
+      video.dislikes = Math.max(0, video.dislikes - 1);
+    } else if (action === "comment") {
+      if (!author || !text) {
+        return NextResponse.json({ error: "Missing author or text parameter" }, { status: 400 });
+      }
+      const newComment = {
+        id: Date.now().toString(),
+        author,
+        text,
+        timestamp: Date.now(),
+      };
+      video.comments.push(newComment);
     } else if (action === "tip") {
       const tipAmount = parseFloat(amount);
       if (!isNaN(tipAmount) && tipAmount > 0) {

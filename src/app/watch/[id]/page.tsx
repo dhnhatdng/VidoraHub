@@ -6,7 +6,7 @@ import Link from "next/link";
 import { 
   Calendar, HardDrive, User, ArrowLeft, ExternalLink, 
   Database, Info, AlertTriangle, ShieldCheck, Clock, 
-  Eye, ThumbsUp, Heart, Share2, Coins, Loader2, Play 
+  Eye, ThumbsUp, ThumbsDown, Heart, Share2, Coins, Loader2, Play 
 } from "lucide-react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { CustomVideoPlayer } from "@/components/CustomVideoPlayer";
@@ -26,6 +26,7 @@ interface VideoMetadata {
   likes?: number;
   dislikes?: number;
   totalTips?: number;
+  comments?: { id: string; author: string; text: string; timestamp: number }[];
 }
 
 export default function WatchPage() {
@@ -42,7 +43,11 @@ export default function WatchPage() {
 
   // Engagement states
   const [isLiked, setIsLiked] = useState(false);
+  const [isDisliked, setIsDisliked] = useState(false);
   const [viewRegistered, setViewRegistered] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [commentError, setCommentError] = useState("");
 
   // Tipping states
   const [tipModalOpen, setTipModalOpen] = useState(false);
@@ -82,6 +87,8 @@ export default function WatchPage() {
     if (typeof window !== "undefined" && id) {
       const likedVideos = JSON.parse(localStorage.getItem("vidora_liked") || "[]");
       setIsLiked(likedVideos.includes(id));
+      const dislikedVideos = JSON.parse(localStorage.getItem("vidora_disliked") || "[]");
+      setIsDisliked(dislikedVideos.includes(id));
     }
   }, [id]);
 
@@ -128,7 +135,7 @@ export default function WatchPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setVideo(data.video);
+        let updatedVideo = data.video;
         
         const likedVideos = JSON.parse(localStorage.getItem("vidora_liked") || "[]");
         if (isLiked) {
@@ -136,12 +143,116 @@ export default function WatchPage() {
           if (index > -1) likedVideos.splice(index, 1);
         } else {
           likedVideos.push(id);
+          // If disliked, undislike it
+          if (isDisliked) {
+            const dislikeRes = await fetch(`/api/videos/${id}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "undislike" }),
+            });
+            if (dislikeRes.ok) {
+              const dData = await dislikeRes.json();
+              updatedVideo = dData.video;
+            }
+            const dislikedVideos = JSON.parse(localStorage.getItem("vidora_disliked") || "[]");
+            const dIndex = dislikedVideos.indexOf(id);
+            if (dIndex > -1) dislikedVideos.splice(dIndex, 1);
+            localStorage.setItem("vidora_disliked", JSON.stringify(dislikedVideos));
+            setIsDisliked(false);
+          }
         }
         localStorage.setItem("vidora_liked", JSON.stringify(likedVideos));
         setIsLiked(!isLiked);
+        setVideo(updatedVideo);
       }
     } catch (err) {
       console.error("Failed to toggle like:", err);
+    }
+  };
+
+  // Handle Dislike/Undislike
+  const handleDislike = async () => {
+    if (!id) return;
+    try {
+      const action = isDisliked ? "undislike" : "dislike";
+      const res = await fetch(`/api/videos/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        let updatedVideo = data.video;
+        
+        const dislikedVideos = JSON.parse(localStorage.getItem("vidora_disliked") || "[]");
+        if (isDisliked) {
+          const index = dislikedVideos.indexOf(id);
+          if (index > -1) dislikedVideos.splice(index, 1);
+        } else {
+          dislikedVideos.push(id);
+          // If liked, unlike it
+          if (isLiked) {
+            const likeRes = await fetch(`/api/videos/${id}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "unlike" }),
+            });
+            if (likeRes.ok) {
+              const lData = await likeRes.json();
+              updatedVideo = lData.video;
+            }
+            const likedVideos = JSON.parse(localStorage.getItem("vidora_liked") || "[]");
+            const lIndex = likedVideos.indexOf(id);
+            if (lIndex > -1) likedVideos.splice(lIndex, 1);
+            localStorage.setItem("vidora_liked", JSON.stringify(likedVideos));
+            setIsLiked(false);
+          }
+        }
+        localStorage.setItem("vidora_disliked", JSON.stringify(dislikedVideos));
+        setIsDisliked(!isDisliked);
+        setVideo(updatedVideo);
+      }
+    } catch (err) {
+      console.error("Failed to toggle dislike:", err);
+    }
+  };
+
+  // Handle Add Comment
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !commentText.trim()) return;
+    if (!connected || !account) {
+      setCommentError("Please connect your wallet to post a comment.");
+      return;
+    }
+    
+    setCommentSubmitting(true);
+    setCommentError("");
+    
+    try {
+      const res = await fetch(`/api/videos/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "comment",
+          author: account.address.toString(),
+          text: commentText.trim(),
+        }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setVideo(data.video);
+        setCommentText("");
+      } else {
+        const data = await res.json();
+        setCommentError(data.error || "Failed to add comment.");
+      }
+    } catch (err: any) {
+      console.error("Failed to submit comment:", err);
+      setCommentError("An error occurred. Please try again.");
+    } finally {
+      setCommentSubmitting(false);
     }
   };
 
@@ -229,6 +340,18 @@ export default function WatchPage() {
       month: "long",
       day: "numeric"
     });
+  };
+
+  const getRemainingLeaseDays = (timestamp: number) => {
+    const expTime = timestamp + 1000 * 60 * 60 * 24 * 30;
+    const diffMs = expTime - Date.now();
+    if (diffMs <= 0) return "Lease expired";
+    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    if (days > 0) {
+      return `${days}d ${hours}h remaining`;
+    }
+    return `${hours}h remaining`;
   };
 
   const truncateAddress = (addr: string, chars = 6) => {
@@ -344,6 +467,19 @@ export default function WatchPage() {
                   <span>{video.likes || 0} Likes</span>
                 </button>
 
+                {/* Dislike Button */}
+                <button
+                  onClick={handleDislike}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border transition cursor-pointer ${
+                    isDisliked
+                      ? "bg-rose-500/15 border-rose-500/35 text-rose-400 shadow-md"
+                      : "bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800/80 hover:text-white"
+                  }`}
+                >
+                  <ThumbsDown className={`h-4.5 w-4.5 ${isDisliked ? "fill-current" : ""}`} />
+                  <span>{video.dislikes || 0} Dislikes</span>
+                </button>
+
                 {/* Tip Creator Button */}
                 <button
                   onClick={() => setTipModalOpen(true)}
@@ -424,7 +560,7 @@ export default function WatchPage() {
                 <span className="text-slate-500 font-semibold block">Storage Lease Expiration</span>
                 <span className="text-slate-300 flex items-center gap-1">
                   <Clock className="h-3.5 w-3.5 text-indigo-400" />
-                  {getLeaseExpiration(video.timestamp)} (30 days remaining)
+                  {getLeaseExpiration(video.timestamp)} ({getRemainingLeaseDays(video.timestamp)})
                 </span>
               </div>
             </div>
@@ -443,6 +579,92 @@ export default function WatchPage() {
                 Raw Blob Endpoint
                 <ExternalLink className="h-3 w-3" />
               </a>
+            </div>
+          </div>
+
+          {/* Comments Section */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/20 backdrop-blur-sm p-6 space-y-6">
+            <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2 border-b border-slate-900/60 pb-3">
+              <span>Comments</span>
+              <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-semibold">
+                {video.comments?.length || 0}
+              </span>
+            </h3>
+
+            {/* Comment Form */}
+            {connected && account ? (
+              <form onSubmit={handleAddComment} className="space-y-3">
+                <div className="flex gap-3 items-start">
+                  <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs shrink-0 font-bold">
+                    U
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <textarea
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      placeholder="Share your thoughts on this stream..."
+                      rows={3}
+                      className="w-full rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 placeholder-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors resize-none"
+                      required
+                    />
+                    {commentError && (
+                      <p className="text-xs text-rose-400">{commentError}</p>
+                    )}
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={commentSubmitting || !commentText.trim()}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 transition cursor-pointer shadow-md"
+                      >
+                        {commentSubmitting ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span>Posting...</span>
+                          </>
+                        ) : (
+                          <span>Post Comment</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            ) : (
+              <div className="rounded-xl bg-slate-950/30 border border-slate-900/60 p-4 text-center">
+                <p className="text-xs text-slate-400">
+                  Please connect your wallet to participate in the discussion.
+                </p>
+              </div>
+            )}
+
+            {/* Comments List */}
+            <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1 scrollbar-thin">
+              {video.comments && video.comments.length > 0 ? (
+                video.comments.map((comment) => (
+                  <div key={comment.id} className="flex gap-3 items-start p-3 rounded-xl bg-slate-950/20 border border-slate-900/40">
+                    <div className="h-8 w-8 rounded-lg bg-indigo-950 text-indigo-400 flex items-center justify-center font-semibold text-xs border border-indigo-500/20 shrink-0">
+                      {comment.author.slice(2, 4).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-mono text-slate-400 font-semibold truncate max-w-[150px] sm:max-w-[200px]" title={comment.author}>
+                          {truncateAddress(comment.author, 6)}
+                        </span>
+                        <span className="text-[10px] text-slate-600">
+                          {formatDate(comment.timestamp)}
+                        </span>
+                      </div>
+                      <p className="text-xs sm:text-sm text-slate-300 break-words leading-relaxed whitespace-pre-wrap">
+                        {comment.text}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-6">
+                  <p className="text-xs text-slate-500">No comments yet. Be the first to start the conversation!</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

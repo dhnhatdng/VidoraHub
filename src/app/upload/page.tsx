@@ -21,6 +21,7 @@ export default function UploadPage() {
   const [status, setStatus] = useState<"idle" | "uploading" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [uploadedVideoId, setUploadedVideoId] = useState<string | null>(null);
+  const [uploadStage, setUploadStage] = useState<"preparing" | "uploading" | "registering">("preparing");
 
   // Revoke preview object URL to prevent memory leaks
   useEffect(() => {
@@ -118,7 +119,16 @@ export default function UploadPage() {
     }
 
     setStatus("uploading");
+    setUploadStage("preparing");
     setErrorMsg("");
+
+    const uploadTimer = setTimeout(() => {
+      setUploadStage("uploading");
+    }, 600);
+
+    const registerTimer = setTimeout(() => {
+      setUploadStage("registering");
+    }, 4500);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -135,6 +145,9 @@ export default function UploadPage() {
         body: formData,
       });
 
+      clearTimeout(uploadTimer);
+      clearTimeout(registerTimer);
+
       const data = await response.json();
 
       if (!response.ok) {
@@ -144,6 +157,8 @@ export default function UploadPage() {
       setStatus("success");
       setUploadedVideoId(data.video.id);
     } catch (err: any) {
+      clearTimeout(uploadTimer);
+      clearTimeout(registerTimer);
       console.error(err);
       setStatus("error");
       setErrorMsg(err.message || "An unexpected error occurred during upload.");
@@ -243,12 +258,74 @@ export default function UploadPage() {
 
         {/* Status: Loading Screen */}
         {status === "uploading" && (
-          <div className="py-16 text-center flex flex-col items-center justify-center">
-            <Loader2 className="h-12 w-12 text-indigo-400 animate-spin mb-6" />
-            <h3 className="text-xl font-bold text-slate-100">Uploading to Shelby Network...</h3>
-            <p className="mt-2 text-slate-400 text-sm max-w-xs">
-              Sending blob blocks, signing metadata on Aptos ledger, and confirming settlement. This might take up to a minute depending on your file size.
-            </p>
+          <div className="py-12 text-center flex flex-col items-center justify-center space-y-8">
+            <Loader2 className="h-12 w-12 text-indigo-400 animate-spin" />
+            
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold text-slate-100">Publishing Content</h3>
+              <p className="text-slate-400 text-xs sm:text-sm max-w-xs mx-auto">
+                This process streams your media directly to the Shelby Protocol and secures ownership.
+              </p>
+            </div>
+
+            {/* Stages Visual Progression */}
+            <div className="w-full max-w-md mx-auto rounded-2xl border border-slate-800 bg-slate-950/40 p-5 text-left space-y-4 shadow-inner">
+              <div className="flex items-center gap-3">
+                <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold border transition-all ${
+                  uploadStage === "preparing"
+                    ? "bg-indigo-500/10 border-indigo-500 text-indigo-400 animate-pulse"
+                    : "bg-emerald-500/10 border-emerald-500 text-emerald-400"
+                }`}>
+                  {uploadStage !== "preparing" ? "✓" : "1"}
+                </div>
+                <div className="flex-1">
+                  <p className={`text-xs sm:text-sm font-semibold transition-colors ${
+                    uploadStage === "preparing" ? "text-slate-200" : "text-slate-500"
+                  }`}>
+                    Preparing media file
+                  </p>
+                  <p className="text-[10px] text-slate-500">Checking parameters and formatting blocks</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold border transition-all ${
+                  uploadStage === "preparing"
+                    ? "border-slate-850 text-slate-700"
+                    : uploadStage === "uploading"
+                    ? "bg-indigo-500/10 border-indigo-500 text-indigo-400 animate-pulse"
+                    : "bg-emerald-500/10 border-emerald-500 text-emerald-400"
+                }`}>
+                  {uploadStage === "registering" ? "✓" : "2"}
+                </div>
+                <div className="flex-1">
+                  <p className={`text-xs sm:text-sm font-semibold transition-colors ${
+                    uploadStage === "uploading" ? "text-slate-200" : uploadStage === "registering" ? "text-slate-500" : "text-slate-700"
+                  }`}>
+                    Uploading blob to Shelby network
+                  </p>
+                  <p className="text-[10px] text-slate-500">Pushing segments to decentralized storage nodes</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold border transition-all ${
+                  uploadStage === "registering"
+                    ? "bg-indigo-500/10 border-indigo-500 text-indigo-400 animate-pulse"
+                    : "border-slate-850 text-slate-700"
+                }`}>
+                  3
+                </div>
+                <div className="flex-1">
+                  <p className={`text-xs sm:text-sm font-semibold transition-colors ${
+                    uploadStage === "registering" ? "text-slate-200" : "text-slate-750"
+                  }`}>
+                    Securing registry & indexing metadata
+                  </p>
+                  <p className="text-[10px] text-slate-500">Signing metadata ledger on Aptos chain</p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
